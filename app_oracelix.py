@@ -275,21 +275,20 @@ def load_data(uploaded_file=None):
             st.error(f"❌ Error loading file: {str(e)}")
             return None
 
-    # Fallback to local CSV files
+    # Fallback: Show upload instructions (no default data files for cloud deployment)
     if df is None:
-        data_files = ['merkaba_raw.csv', 'Customer Data.csv']
-        for file_path in data_files:
-            if os.path.exists(file_path):
-                try:
-                    df = pd.read_csv(file_path)
-                    df.columns = df.columns.str.strip()
-                    st.info(f"📊 Using {file_path}: {len(df):,} rows")
-                    break
-                except:
-                    continue
+        st.warning("""
+        📁 **Please Upload Your Data**
 
-    if df is None:
-        st.error("❌ No data loaded. Please upload a file.")
+        Click the file uploader in the sidebar to get started!
+
+        **Supported Formats:**
+        - CSV (.csv)
+        - Excel (.xlsx, .xls)
+        - PDF (.pdf) - Tables only
+
+        **Don't have data?** Download a sample CSV using the button in the sidebar.
+        """)
         return None
 
     # Clean data
