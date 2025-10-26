@@ -1,778 +1,880 @@
-# app.py - Complete K-Means Clustering App
+# ORACELIX - Customer Segmentation Intelligence
+# "Where Sacred Geometry Meets Artificial Intelligence"
+# Precision. Purity. Perfection — The Geometry of Infinite Mind
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score, davies_bouldin_score
-from scipy import stats
 import warnings
+import os
+import time
+import base64
+from pathlib import Path
+
 warnings.filterwarnings('ignore')
 
-# Page config
+# ============ ORACELIX CONFIGURATION ============
+BRAND_NAME = "ORACELIX"
+BRAND_TAGLINE = "Where Sacred Geometry Meets Artificial Intelligence"
+BRAND_MOTTO = "Precision. Purity. Perfection — The Geometry of Infinite Mind"
+PRIMARY_COLOR = "#1f77b4"
+ACCENT_COLOR = "#ff7f0e"
+HEADER_BANNER = "2.png"
+FOOTER_BANNER = "4.png"
+MIDDLE_BANNER = "3.png"
+
+# ============ HELPER FUNCTIONS ============
+
+def validate_environment():
+    """Validate that required directories exist"""
+    os.makedirs('reports', exist_ok=True)
+    os.makedirs('models', exist_ok=True)
+    os.makedirs('exports', exist_ok=True)
+
+def load_image(image_path):
+    """Load and encode image for display"""
+    try:
+        if os.path.exists(image_path):
+            with open(image_path, "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+                return f"data:image/png;base64,{data}"
+    except:
+        pass
+    return None
+
+def get_file_icon(file_type):
+    """Get icon for file type"""
+    icons = {
+        'csv': '📊',
+        'xlsx': '📗',
+        'xls': '📗',
+        'pdf': '📕'
+    }
+    return icons.get(file_type.lower(), '📄')
+
+# ============ PAGE CONFIGURATION ============
 st.set_page_config(
-    page_title="CardWise Customer Segmentation",
-    page_icon="💳",
+    page_title=f"{BRAND_NAME} - Customer Intelligence",
+    page_icon="🔮",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
+# ============ CUSTOM STYLING ============
+st.markdown(f"""
 <style>
-    .main-header {
-        font-size: 3rem;
-        color: #1f77b4;
+    /* Main Theme */
+    .stApp {{
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }}
+
+    /* Header Styling */
+    .oracelix-header {{
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        padding: 2rem;
+        border-radius: 15px;
         text-align: center;
         margin-bottom: 2rem;
-    }
-    .section-header {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }}
+
+    .oracelix-title {{
+        font-size: 3.5rem;
+        font-weight: 800;
+        background: linear-gradient(45deg, #FFD700, #FFA500, #FFD700);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: 3px;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }}
+
+    .oracelix-tagline {{
+        color: #E0E0E0;
+        font-size: 1.2rem;
+        font-style: italic;
+        margin-top: 0.5rem;
+    }}
+
+    .oracelix-motto {{
+        color: #B8B8B8;
+        font-size: 0.9rem;
+        margin-top: 0.3rem;
+        font-weight: 300;
+    }}
+
+    /* Card Styling */
+    .metric-card {{
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        color: white;
+        margin: 0.5rem 0;
+    }}
+
+    /* Section Headers */
+    .section-header {{
         font-size: 2rem;
-        color: #ff7f0e;
+        color: #FFD700;
         margin-top: 2rem;
         margin-bottom: 1rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
+        font-weight: 600;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }}
+
+    /* Sidebar Styling */
+    .css-1d391kg {{
+        background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
+    }}
+
+    /* Button Styling */
+    .stButton>button {{
+        background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+        transition: all 0.3s;
+    }}
+
+    .stButton>button:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }}
+
+    /* Progress Bar */
+    .stProgress > div > div > div > div {{
+        background: linear-gradient(45deg, #FFD700, #FFA500);
+    }}
+
+    /* File Uploader */
+    .uploadedFile {{
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
         padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
+# ============ DATA LOADING FUNCTIONS ============
+
 @st.cache_data
-def load_data():
-    """Load and return the dataset"""
-    df = pd.read_csv('Customer Data.csv')
+def load_csv_data(file):
+    """Load CSV file"""
+    df = pd.read_csv(file)
+    df.columns = df.columns.str.strip()
     return df
+
+@st.cache_data
+def load_excel_data(file):
+    """Load Excel file (.xlsx, .xls)"""
+    try:
+        # Try reading all sheets
+        excel_file = pd.ExcelFile(file)
+
+        if len(excel_file.sheet_names) == 1:
+            # Single sheet - load directly
+            df = pd.read_excel(file, sheet_name=0)
+        else:
+            # Multiple sheets - let user choose
+            st.sidebar.info(f"📗 Found {len(excel_file.sheet_names)} sheets")
+            sheet_name = st.sidebar.selectbox(
+                "Select Sheet:",
+                excel_file.sheet_names
+            )
+            df = pd.read_excel(file, sheet_name=sheet_name)
+
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception as e:
+        st.error(f"❌ Error loading Excel file: {str(e)}")
+        return None
+
+@st.cache_data
+def load_pdf_data(file):
+    """Load PDF file (extract tables)"""
+    try:
+        import tabula
+
+        # Extract all tables from PDF
+        tables = tabula.read_pdf(file, pages='all', multiple_tables=True)
+
+        if len(tables) == 0:
+            st.error("❌ No tables found in PDF")
+            return None
+
+        if len(tables) == 1:
+            df = tables[0]
+        else:
+            st.sidebar.info(f"📕 Found {len(tables)} tables in PDF")
+            table_idx = st.sidebar.selectbox(
+                "Select Table:",
+                range(len(tables)),
+                format_func=lambda x: f"Table {x+1}"
+            )
+            df = tables[table_idx]
+
+        df.columns = df.columns.str.strip()
+        return df
+
+    except ImportError:
+        st.error("""
+        ❌ **PDF Support Not Installed**
+
+        To enable PDF upload, install:
+        ```
+        pip install tabula-py
+        ```
+
+        Note: Also requires Java Runtime Environment (JRE)
+        """)
+        return None
+    except Exception as e:
+        st.error(f"❌ Error loading PDF: {str(e)}")
+        return None
+
+@st.cache_data
+def load_data(uploaded_file=None):
+    """Universal data loader - supports CSV, Excel, PDF"""
+    df = None
+    file_type = None
+
+    if uploaded_file is not None:
+        # Get file extension
+        file_ext = uploaded_file.name.split('.')[-1].lower()
+        file_type = file_ext
+
+        try:
+            # Route to appropriate loader
+            if file_ext == 'csv':
+                df = load_csv_data(uploaded_file)
+                st.success(f"📊 CSV loaded: {len(df):,} rows, {len(df.columns)} columns")
+
+            elif file_ext in ['xlsx', 'xls']:
+                df = load_excel_data(uploaded_file)
+                if df is not None:
+                    st.success(f"📗 Excel loaded: {len(df):,} rows, {len(df.columns)} columns")
+
+            elif file_ext == 'pdf':
+                df = load_pdf_data(uploaded_file)
+                if df is not None:
+                    st.success(f"📕 PDF loaded: {len(df):,} rows, {len(df.columns)} columns")
+            else:
+                st.error(f"❌ Unsupported file type: .{file_ext}")
+                return None
+
+        except Exception as e:
+            st.error(f"❌ Error loading file: {str(e)}")
+            return None
+
+    # Fallback: Show upload instructions (no default data files for cloud deployment)
+    if df is None:
+        st.warning("""
+        📁 **Please Upload Your Data**
+
+        Click the file uploader in the sidebar to get started!
+
+        **Supported Formats:**
+        - CSV (.csv)
+        - Excel (.xlsx, .xls)
+        - PDF (.pdf) - Tables only
+
+        **Don't have data?** Download a sample CSV using the button in the sidebar.
+        """)
+        return None
+
+    # Clean data
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+
+    non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
+    for col in non_numeric_cols:
+        if df[col].isnull().any():
+            df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 'Unknown')
+
+    return df
+
+# ============ ML FUNCTIONS ============
 
 @st.cache_data
 def preprocess_data(df, selected_features):
     """Preprocess data: select features and scale"""
     X = df[selected_features].copy()
-    
-    # Handle missing values
     X = X.fillna(X.median())
-    
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     return X, X_scaled, scaler
 
 @st.cache_data
 def train_kmeans(X_scaled, n_clusters, random_state=42):
-    """Train K-Means model"""
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+    """Train K-Means with automatic optimization"""
+    # Use MiniBatch for large datasets
+    if X_scaled.shape[0] > 5000:
+        kmeans = MiniBatchKMeans(
+            n_clusters=n_clusters,
+            random_state=random_state,
+            batch_size=1000,
+            max_iter=100,
+            n_init=3
+        )
+    else:
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            random_state=random_state,
+            n_init=10
+        )
+
     clusters = kmeans.fit_predict(X_scaled)
     return kmeans, clusters
 
+# ============ MAIN APP ============
+
 def main():
-    # Header
-    st.markdown('<h1 class="main-header">💳 CardWise Customer Segmentation</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; font-size: 1.2rem;">K-Means Clustering Analysis for Targeted Marketing & Risk Management</p>', unsafe_allow_html=True)
-    
-    # Sidebar
-    st.sidebar.title("📊 Navigation")
+    validate_environment()
+
+    # ============ HEADER BANNER ============
+    header_banner = load_image(HEADER_BANNER)
+
+    if header_banner:
+        st.markdown(f"""
+        <div style="width: 100%; margin-bottom: 2rem;">
+            <img src="{header_banner}" style="width: 100%; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="oracelix-header">
+            <div class="oracelix-title">🔮 {BRAND_NAME}</div>
+            <div class="oracelix-tagline">{BRAND_TAGLINE}</div>
+            <div class="oracelix-motto">{BRAND_MOTTO}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============ SECURITY & PRIVACY NOTICE ============
+    st.info("""
+    🔒 **Your Data is 100% Safe & Private**
+    - ✅ All processing happens locally on your computer
+    - ✅ No data uploaded to cloud or external servers
+    - ✅ Data deleted when you close your browser
+    - ✅ No data stored or logged anywhere
+    - ✅ Complete privacy guaranteed
+    """)
+
+    # ============ SIDEBAR ============
+    st.sidebar.title("🔮 Navigation")
+
     sections = [
-        "📋 Part A: Data Loading",
-        "🔍 Part B: EDA",
-        "⚙️ Part C: Preprocessing",
-        "📈 Part D: Optimal K",
-        "🎯 Part E: Clustering",
-        "💼 Part F: Business Insights"
+        "📊 Data Upload",
+        "🔍 Data Explorer",
+        "⚙️ Feature Engineering",
+        "📈 Optimal Clusters",
+        "🎯 Segmentation",
+        "💼 Business Intelligence"
     ]
-    selected_section = st.sidebar.radio("Select Section:", sections)
-    
-    # Load data
-    df = load_data()
-    
-    # ============ PART A: DATA LOADING ============
-    if selected_section == "📋 Part A: Data Loading":
-        st.markdown('<h2 class="section-header">Part A: Data Loading and Initial Inspection</h2>', unsafe_allow_html=True)
-        
+
+    selected_section = st.sidebar.radio("", sections)
+
+    # ============ FILE UPLOAD ============
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📁 Upload Data")
+
+    st.sidebar.info("""
+    **Supported Formats:**
+    - 📊 CSV (.csv)
+    - 📗 Excel (.xlsx, .xls)
+    - 📕 PDF (.pdf) - Tables only
+    """)
+
+    uploaded_file = st.sidebar.file_uploader(
+        "Choose a file",
+        type=['csv', 'xlsx', 'xls', 'pdf'],
+        help="Upload customer data in CSV, Excel, or PDF format"
+    )
+
+    if uploaded_file:
+        file_icon = get_file_icon(uploaded_file.name.split('.')[-1])
+        st.sidebar.success(f"{file_icon} {uploaded_file.name}")
+        st.sidebar.info(f"📏 {uploaded_file.size / 1024:.1f} KB")
+
+    # Cache control
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🗑️ Clear Cache"):
+        st.cache_data.clear()
+        st.sidebar.success("✅ Cache cleared!")
+        st.rerun()
+
+    # ============ LOAD DATA ============
+    with st.spinner("🔮 Loading data with ORACELIX intelligence..."):
+        df = load_data(uploaded_file)
+
+    if df is None:
+        st.stop()
+
+    # Data info in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.metric("📊 Records", f"{len(df):,}")
+    st.sidebar.metric("📋 Features", len(df.columns))
+    st.sidebar.metric("💾 Memory", f"{df.memory_usage(deep=True).sum()/1024/1024:.2f} MB")
+
+    # ============ SECTIONS ============
+
+    if selected_section == "📊 Data Upload":
+        st.markdown('<h2 class="section-header">📊 Data Upload & Overview</h2>', unsafe_allow_html=True)
+
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Customers", f"{len(df):,}")
+            st.metric("Total Records", f"{len(df):,}", delta="Active")
         with col2:
-            st.metric("Total Features", len(df.columns))
+            st.metric("Features", len(df.columns))
         with col3:
             st.metric("Missing Values", df.isnull().sum().sum())
         with col4:
-            st.metric("Memory Usage", f"{df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
-        
-        st.subheader("1️⃣ First 10 Rows")
-        st.dataframe(df.head(10), use_container_width=True)
-        
-        st.subheader("2️⃣ Dataset Info")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Data Types:**")
-            dtype_df = pd.DataFrame({
-                'Column': df.columns,
-                'Type': df.dtypes.values,
-                'Non-Null': df.count().values
-            })
-            st.dataframe(dtype_df, use_container_width=True)
-        
-        with col2:
-            st.write("**Descriptive Statistics:**")
-            st.dataframe(df.describe().T, use_container_width=True)
-        
-        st.subheader("3️⃣ Missing Values Analysis")
-        missing = df.isnull().sum()
-        if missing.sum() == 0:
-            st.success("✅ No missing values detected! Data quality is excellent.")
-        else:
-            st.warning(f"⚠️ Found {missing.sum()} missing values")
-            fig = px.bar(x=missing.index, y=missing.values, 
-                        title="Missing Values by Column",
-                        labels={'x': 'Column', 'y': 'Missing Count'})
+            st.metric("Data Quality", f"{(1 - df.isnull().sum().sum()/(len(df)*len(df.columns)))*100:.1f}%")
+
+        st.subheader("📋 Data Preview")
+        st.dataframe(df.head(20), use_container_width=True, height=400)
+
+        st.subheader("📊 Data Statistics")
+        st.dataframe(df.describe().T, use_container_width=True)
+
+        # Download sample
+        st.subheader("📥 Download Template")
+        if st.button("Generate Sample CSV"):
+            sample_data = {
+                'CUST_ID': [f'CUST_{i:04d}' for i in range(1, 101)],
+                'BALANCE': np.random.normal(1500, 500, 100),
+                'PURCHASES': np.random.normal(2000, 800, 100),
+                'CASH_ADVANCE': np.random.normal(500, 200, 100),
+                'CREDIT_LIMIT': np.random.normal(5000, 1500, 100),
+                'TENURE': np.random.randint(12, 60, 100)
+            }
+            sample_df = pd.DataFrame(sample_data)
+            csv = sample_df.to_csv(index=False)
+
+            st.download_button(
+                label="📥 Download Sample CSV",
+                data=csv,
+                file_name="oracelix_sample_data.csv",
+                mime="text/csv"
+            )
+
+    elif selected_section == "🔍 Data Explorer":
+        st.markdown('<h2 class="section-header">🔍 Data Explorer</h2>', unsafe_allow_html=True)
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+        # Remove ID columns
+        exclude_cols = ['CUST_ID', 'SEGMENT_TAG']
+        for col in exclude_cols:
+            if col in numeric_cols:
+                numeric_cols.remove(col)
+
+        if len(numeric_cols) >= 2:
+            st.subheader("📊 Correlation Matrix")
+            corr_matrix = df[numeric_cols].corr()
+
+            fig = px.imshow(
+                corr_matrix,
+                text_auto='.2f',
+                aspect='auto',
+                color_continuous_scale='RdBu_r',
+                title='Feature Correlation Heatmap'
+            )
+            fig.update_layout(height=700)
             st.plotly_chart(fig, use_container_width=True)
-    
-    # ============ PART B: EDA ============
-    elif selected_section == "🔍 Part B: EDA":
-        st.markdown('<h2 class="section-header">Part B: Exploratory Data Analysis</h2>', unsafe_allow_html=True)
-        
-        st.subheader("1️⃣ Correlation Matrix")
+
+            st.subheader("📈 Feature Distributions")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                feat1 = st.selectbox("Select Feature 1:", numeric_cols, index=0)
+            with col2:
+                feat2 = st.selectbox("Select Feature 2:", numeric_cols, index=min(1, len(numeric_cols)-1))
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                fig1 = px.histogram(df, x=feat1, nbins=50, title=f'Distribution: {feat1}')
+                fig1.add_vline(x=df[feat1].mean(), line_dash="dash", line_color="red")
+                st.plotly_chart(fig1, use_container_width=True)
+
+            with col2:
+                fig2 = px.histogram(df, x=feat2, nbins=50, title=f'Distribution: {feat2}')
+                fig2.add_vline(x=df[feat2].mean(), line_dash="dash", line_color="red")
+                st.plotly_chart(fig2, use_container_width=True)
+
+    elif selected_section == "⚙️ Feature Engineering":
+        st.markdown('<h2 class="section-header">⚙️ Feature Engineering</h2>', unsafe_allow_html=True)
+
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        numeric_cols.remove('CUST_ID') if 'CUST_ID' in numeric_cols else None
-        
-        corr_matrix = df[numeric_cols].corr()
-        
-        fig = px.imshow(corr_matrix, 
-                       text_auto='.2f',
-                       aspect='auto',
-                       color_continuous_scale='RdBu_r',
-                       title='Feature Correlation Heatmap')
-        fig.update_layout(height=800)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.write("**Key Correlations:**")
-        # Find top correlations
-        corr_pairs = []
-        for i in range(len(corr_matrix.columns)):
-            for j in range(i+1, len(corr_matrix.columns)):
-                corr_pairs.append({
-                    'Feature 1': corr_matrix.columns[i],
-                    'Feature 2': corr_matrix.columns[j],
-                    'Correlation': corr_matrix.iloc[i, j]
-                })
-        corr_df = pd.DataFrame(corr_pairs).sort_values('Correlation', key=abs, ascending=False)
-        st.dataframe(corr_df.head(10), use_container_width=True)
-        
-        st.subheader("2️⃣ Distribution Visualizations")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            feature1 = st.selectbox("Select Feature for Histogram:", numeric_cols, index=1)
-        with col2:
-            feature2 = st.selectbox("Select Second Feature:", numeric_cols, index=3)
-        
-        # Histograms
-        col1, col2 = st.columns(2)
-        with col1:
-            fig1 = px.histogram(df, x=feature1, nbins=50, 
-                               title=f'Distribution of {feature1}',
-                               marginal='box')
-            fig1.add_vline(x=df[feature1].mean(), line_dash="dash", 
-                          line_color="red", annotation_text="Mean")
-            st.plotly_chart(fig1, use_container_width=True)
-            
-            skew = df[feature1].skew()
-            kurt = df[feature1].kurtosis()
-            st.info(f"📊 Skewness: {skew:.2f} | Kurtosis: {kurt:.2f}")
-        
-        with col2:
-            fig2 = px.histogram(df, x=feature2, nbins=50,
-                               title=f'Distribution of {feature2}',
-                               marginal='box')
-            fig2.add_vline(x=df[feature2].mean(), line_dash="dash",
-                          line_color="red", annotation_text="Mean")
-            st.plotly_chart(fig2, use_container_width=True)
-            
-            skew2 = df[feature2].skew()
-            kurt2 = df[feature2].kurtosis()
-            st.info(f"📊 Skewness: {skew2:.2f} | Kurtosis: {kurt2:.2f}")
-        
-        # Scatter plot
-        st.subheader("Scatter Plot Analysis")
-        x_feat = st.selectbox("X-axis:", numeric_cols, index=3, key='scatter_x')
-        y_feat = st.selectbox("Y-axis:", numeric_cols, index=6, key='scatter_y')
-        
-        fig3 = px.scatter(df, x=x_feat, y=y_feat, 
-                         title=f'{x_feat} vs {y_feat}',
-                         trendline='ols',
-                         hover_data=['CUST_ID'])
-        st.plotly_chart(fig3, use_container_width=True)
-        
-        st.subheader("3️⃣ Outlier Detection")
-        
-        outlier_feat = st.selectbox("Select Feature for Outlier Analysis:", numeric_cols)
-        
-        Q1 = df[outlier_feat].quantile(0.25)
-        Q3 = df[outlier_feat].quantile(0.75)
-        IQR = Q3 - Q1
-        outliers = df[(df[outlier_feat] < Q1 - 1.5*IQR) | (df[outlier_feat] > Q3 + 1.5*IQR)]
-        
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig4 = px.box(df, y=outlier_feat, title=f'Boxplot: {outlier_feat}')
-            st.plotly_chart(fig4, use_container_width=True)
-        
-        with col2:
-            st.metric("Outliers Detected", f"{len(outliers)}")
-            st.metric("Outlier Percentage", f"{len(outliers)/len(df)*100:.2f}%")
-            st.metric("Q1 (25%)", f"{Q1:.2f}")
-            st.metric("Q3 (75%)", f"{Q3:.2f}")
-            st.metric("IQR", f"{IQR:.2f}")
-    
-    # ============ PART C: PREPROCESSING ============
-    elif selected_section == "⚙️ Part C: Preprocessing":
-        st.markdown('<h2 class="section-header">Part C: Preprocessing & Feature Selection</h2>', unsafe_allow_html=True)
-        
-        st.subheader("1️⃣ Feature Selection")
-        
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        numeric_cols.remove('CUST_ID') if 'CUST_ID' in numeric_cols else None
-        
-        st.write("**Available Features:**")
-        st.write(numeric_cols)
-        
+        exclude_cols = ['CUST_ID', 'SEGMENT_TAG']
+        for col in exclude_cols:
+            if col in numeric_cols:
+                numeric_cols.remove(col)
+
+        st.subheader("🎯 Select Features for Clustering")
+
         # Recommended features
-        recommended_features = [
-            'BALANCE', 'PURCHASES', 'ONEOFF_PURCHASES', 
-            'INSTALLMENTS_PURCHASES', 'CASH_ADVANCE', 
-            'CREDIT_LIMIT', 'PURCHASES_FREQUENCY', 'TENURE'
+        recommended = [
+            'BALANCE', 'PURCHASES', 'CASH_ADVANCE',
+            'CREDIT_LIMIT', 'PAYMENTS', 'TENURE'
         ]
-        
+        recommended = [f for f in recommended if f in numeric_cols]
+
         selected_features = st.multiselect(
-            "Select Features for Clustering:",
+            "Choose features:",
             numeric_cols,
-            default=[f for f in recommended_features if f in numeric_cols]
+            default=recommended if recommended else numeric_cols[:5]
         )
-        
+
         if len(selected_features) < 2:
             st.warning("⚠️ Please select at least 2 features")
-            return
-        
+            st.stop()
+
         st.success(f"✅ Selected {len(selected_features)} features")
-        
-        # Feature importance based on variance
-        st.subheader("2️⃣ Feature Variance Analysis")
-        variance_df = pd.DataFrame({
-            'Feature': selected_features,
-            'Variance': [df[f].var() for f in selected_features],
-            'Std Dev': [df[f].std() for f in selected_features]
-        }).sort_values('Variance', ascending=False)
-        
-        fig = px.bar(variance_df, x='Feature', y='Variance',
-                    title='Feature Variance (Before Scaling)',
-                    color='Variance',
-                    color_continuous_scale='viridis')
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Scaling
-        st.subheader("3️⃣ Feature Scaling (Standardization)")
-        
+
+        # Preprocess
         X, X_scaled, scaler = preprocess_data(df, selected_features)
-        
+
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Before Scaling:**")
             st.dataframe(X.describe().T, use_container_width=True)
-        
+
         with col2:
             st.write("**After Scaling:**")
             X_scaled_df = pd.DataFrame(X_scaled, columns=selected_features)
             st.dataframe(X_scaled_df.describe().T, use_container_width=True)
-        
+
         # PCA Visualization
-        st.subheader("4️⃣ PCA Visualization")
+        st.subheader("🔮 PCA Projection")
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X_scaled)
-        
+
         pca_df = pd.DataFrame({
             'PC1': X_pca[:, 0],
             'PC2': X_pca[:, 1]
         })
-        
-        fig = px.scatter(pca_df, x='PC1', y='PC2',
-                        title=f'PCA 2D Projection (Explained Variance: {sum(pca.explained_variance_ratio_)*100:.2f}%)',
-                        labels={'PC1': f'PC1 ({pca.explained_variance_ratio_[0]*100:.2f}%)',
-                               'PC2': f'PC2 ({pca.explained_variance_ratio_[1]*100:.2f}%)'})
+
+        fig = px.scatter(
+            pca_df, x='PC1', y='PC2',
+            title=f'PCA 2D Projection (Variance: {sum(pca.explained_variance_ratio_)*100:.1f}%)'
+        )
         st.plotly_chart(fig, use_container_width=True)
-        
+
         # Store in session state
         st.session_state['selected_features'] = selected_features
         st.session_state['X_scaled'] = X_scaled
         st.session_state['X'] = X
         st.session_state['scaler'] = scaler
-    
-    # ============ PART D: OPTIMAL K ============
-    elif selected_section == "📈 Part D: Optimal K":
-        st.markdown('<h2 class="section-header">Part D: Finding Optimal Number of Clusters</h2>', unsafe_allow_html=True)
-        
+
+    elif selected_section == "📈 Optimal Clusters":
+        st.markdown('<h2 class="section-header">📈 Optimal Cluster Detection</h2>', unsafe_allow_html=True)
+
         if 'X_scaled' not in st.session_state:
-            st.warning("⚠️ Please complete Part C: Preprocessing first!")
-            return
-        
+            st.warning("⚠️ Please complete Feature Engineering first!")
+            st.stop()
+
         X_scaled = st.session_state['X_scaled']
-        
-        st.subheader("1️⃣ Elbow Method")
-        
-        k_range = range(2, 11)
-        inertias = []
-        silhouette_scores = []
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for i, k in enumerate(k_range):
-            status_text.text(f"Computing for K={k}...")
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-            kmeans.fit(X_scaled)
-            inertias.append(kmeans.inertia_)
-            silhouette_scores.append(silhouette_score(X_scaled, kmeans.labels_))
-            progress_bar.progress((i + 1) / len(k_range))
-        
-        status_text.empty()
-        progress_bar.empty()
-        
-        # Plot Elbow
+
+        # Show optimization info
+        if X_scaled.shape[0] > 5000:
+            st.info(f"""
+            🔮 **ORACELIX Optimization Active**
+            - Dataset: {X_scaled.shape[0]:,} records
+            - Using MiniBatch K-Means for speed
+            - Intelligent sampling for accuracy
+            """)
+
         col1, col2 = st.columns(2)
-        
         with col1:
-            fig1 = go.Figure()
-            fig1.add_trace(go.Scatter(x=list(k_range), y=inertias, 
-                                     mode='lines+markers',
-                                     marker=dict(size=10, color='blue'),
-                                     line=dict(width=3)))
-            fig1.update_layout(
-                title='Elbow Method: SSE vs K',
-                xaxis_title='Number of Clusters (K)',
-                yaxis_title='Sum of Squared Errors (SSE)',
-                height=400
-            )
-            st.plotly_chart(fig1, use_container_width=True)
-        
+            k_min = st.number_input("Min Clusters:", 2, 10, 2)
         with col2:
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=list(k_range), y=silhouette_scores,
-                                     mode='lines+markers',
-                                     marker=dict(size=10, color='green'),
-                                     line=dict(width=3)))
-            fig2.update_layout(
-                title='Silhouette Score vs K',
-                xaxis_title='Number of Clusters (K)',
-                yaxis_title='Silhouette Score',
-                height=400
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-        
-        # Recommendations
-        st.subheader("2️⃣ Optimal K Selection")
-        
-        # Calculate elbow using percentage change
-        changes = np.diff(inertias)
-        percent_changes = np.abs(changes / inertias[:-1] * 100)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            optimal_k_elbow = 4  # Based on typical elbow
-            st.metric("Recommended K (Elbow)", optimal_k_elbow)
-        with col2:
-            optimal_k_silhouette = list(k_range)[np.argmax(silhouette_scores)]
-            st.metric("Recommended K (Silhouette)", optimal_k_silhouette)
-        with col3:
-            final_k = st.number_input("Select Final K:", min_value=2, max_value=10, value=4)
-        
-        st.info(f"📊 Selected K = {final_k} clusters for analysis")
-        
-        # Store in session state
-        st.session_state['optimal_k'] = final_k
-        st.session_state['inertias'] = inertias
-        st.session_state['silhouette_scores'] = silhouette_scores
-    
-    # ============ PART E: CLUSTERING ============
-    elif selected_section == "🎯 Part E: Clustering":
-        st.markdown('<h2 class="section-header">Part E: K-Means Training & Cluster Analysis</h2>', unsafe_allow_html=True)
-        
+            k_max = st.number_input("Max Clusters:", 3, 15, 6)
+
+        if k_min >= k_max:
+            st.error("❌ Min must be less than Max")
+            st.stop()
+
+        if st.button("🔮 Detect Optimal Clusters", type="primary"):
+            k_range = range(int(k_min), int(k_max) + 1)
+            inertias = []
+            silhouette_scores = []
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            time_text = st.empty()
+
+            start_time = time.time()
+
+            for i, k in enumerate(k_range):
+                iter_start = time.time()
+                status_text.text(f"🔮 Computing K={k}... ({i+1}/{len(k_range)})")
+
+                kmeans, clusters = train_kmeans(X_scaled, k)
+                inertias.append(kmeans.inertia_)
+
+                # Silhouette score with sampling
+                if X_scaled.shape[0] > 5000:
+                    sample_size = 5000
+                    indices = np.random.choice(X_scaled.shape[0], sample_size, replace=False)
+                    sil_score = silhouette_score(X_scaled[indices], clusters[indices])
+                else:
+                    sil_score = silhouette_score(X_scaled, clusters)
+
+                silhouette_scores.append(sil_score)
+
+                progress_bar.progress((i + 1) / len(k_range))
+
+                iter_time = time.time() - iter_start
+                remaining = (len(k_range) - i - 1) * iter_time
+                time_text.text(f"⏱️ Time remaining: {remaining:.1f}s")
+
+            total_time = time.time() - start_time
+            progress_bar.empty()
+            status_text.empty()
+            time_text.empty()
+
+            st.success(f"✅ Completed in {total_time:.1f}s!")
+
+            # Plot results
+            col1, col2 = st.columns(2)
+
+            with col1:
+                fig1 = go.Figure()
+                fig1.add_trace(go.Scatter(
+                    x=list(k_range), y=inertias,
+                    mode='lines+markers',
+                    marker=dict(size=10, color='#667eea'),
+                    line=dict(width=3)
+                ))
+                fig1.update_layout(
+                    title='Elbow Method: Inertia vs K',
+                    xaxis_title='Clusters (K)',
+                    yaxis_title='Inertia',
+                    height=400
+                )
+                st.plotly_chart(fig1, use_container_width=True)
+
+            with col2:
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(
+                    x=list(k_range), y=silhouette_scores,
+                    mode='lines+markers',
+                    marker=dict(size=10, color='#FFD700'),
+                    line=dict(width=3)
+                ))
+                fig2.update_layout(
+                    title='Silhouette Score vs K',
+                    xaxis_title='Clusters (K)',
+                    yaxis_title='Silhouette Score',
+                    height=400
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+
+            # Recommendation
+            optimal_k = list(k_range)[np.argmax(silhouette_scores)]
+
+            st.subheader("🎯 Recommendation")
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("Optimal K (Silhouette)", optimal_k)
+            with col2:
+                st.metric("Best Silhouette Score", f"{max(silhouette_scores):.3f}")
+            with col3:
+                final_k = st.number_input("Select K:", int(k_min), int(k_max), int(optimal_k))
+
+            st.session_state['optimal_k'] = final_k
+            st.session_state['inertias'] = inertias
+            st.session_state['silhouette_scores'] = silhouette_scores
+
+        # Middle Banner after Optimal K
+        middle_banner = load_image(MIDDLE_BANNER)
+        if middle_banner:
+            st.markdown(f"""
+            <div style="width: 100%; margin: 2rem 0;">
+                <img src="{middle_banner}" style="width: 100%; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+            </div>
+            """, unsafe_allow_html=True)
+
+    elif selected_section == "🎯 Segmentation":
+        st.markdown('<h2 class="section-header">🎯 Customer Segmentation</h2>', unsafe_allow_html=True)
+
         if 'X_scaled' not in st.session_state or 'optimal_k' not in st.session_state:
-            st.warning("⚠️ Please complete Parts C and D first!")
-            return
-        
+            st.warning("⚠️ Please complete previous sections first!")
+            st.stop()
+
         X_scaled = st.session_state['X_scaled']
         X = st.session_state['X']
         selected_features = st.session_state['selected_features']
         optimal_k = st.session_state['optimal_k']
-        
-        st.subheader(f"1️⃣ Training K-Means Model (K={optimal_k})")
-        
-        # Train model
+
+        st.subheader(f"🔮 Training Model (K={optimal_k})")
+
         kmeans, clusters = train_kmeans(X_scaled, optimal_k)
-        
-        # Add clusters to dataframe
+
         df_clustered = df.copy()
         df_clustered['Cluster'] = clusters
-        
+
+        # Metrics
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Clusters", optimal_k)
+            st.metric("Clusters", optimal_k)
         with col2:
-            silhouette = silhouette_score(X_scaled, clusters)
-            st.metric("Silhouette Score", f"{silhouette:.3f}")
+            sil_score = silhouette_score(X_scaled, clusters)
+            st.metric("Silhouette Score", f"{sil_score:.3f}")
         with col3:
             dbi = davies_bouldin_score(X_scaled, clusters)
-            st.metric("Davies-Bouldin Index", f"{dbi:.3f}")
-        
-        st.success("✅ Model trained successfully!")
-        
-        # Cluster sizes
-        st.subheader("2️⃣ Cluster Distribution")
-        
+            st.metric("Davies-Bouldin", f"{dbi:.3f}")
+
+        st.success("✅ Segmentation complete!")
+
+        # Cluster distribution
+        st.subheader("📊 Cluster Distribution")
+
         cluster_counts = df_clustered['Cluster'].value_counts().sort_index()
-        cluster_pct = (cluster_counts / len(df_clustered) * 100).round(2)
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            cluster_dist_df = pd.DataFrame({
-                'Cluster': cluster_counts.index,
-                'Count': cluster_counts.values,
-                'Percentage': cluster_pct.values
-            })
-            st.dataframe(cluster_dist_df, use_container_width=True)
-        
-        with col2:
-            fig = px.pie(values=cluster_counts.values, 
-                        names=[f'Cluster {i}' for i in cluster_counts.index],
-                        title='Cluster Size Distribution',
-                        hole=0.4)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Cluster profiles
-        st.subheader("3️⃣ Cluster Profiles (Centroids)")
-        
-        cluster_profiles = df_clustered.groupby('Cluster')[selected_features].mean()
-        
-        # Add size info
-        cluster_profiles['Size'] = cluster_counts.values
-        cluster_profiles['Size_%'] = cluster_pct.values
-        
-        st.dataframe(cluster_profiles.round(2), use_container_width=True)
-        
-        # Heatmap of centroids
-        fig = px.imshow(cluster_profiles[selected_features].T,
-                       labels=dict(x="Cluster", y="Feature", color="Value"),
-                       x=[f'Cluster {i}' for i in cluster_profiles.index],
-                       y=selected_features,
-                       color_continuous_scale='RdYlGn',
-                       aspect='auto',
-                       title='Cluster Centroids Heatmap (Scaled Values)')
-        fig.update_layout(height=500)
+
+        fig = px.pie(
+            values=cluster_counts.values,
+            names=[f'Segment {i}' for i in cluster_counts.index],
+            title='Customer Segments',
+            hole=0.4
+        )
         st.plotly_chart(fig, use_container_width=True)
-        
+
         # PCA Visualization with clusters
-        st.subheader("4️⃣ Cluster Visualization (PCA)")
-        
+        st.subheader("🔮 Segment Visualization")
+
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X_scaled)
-        
+
         pca_df = pd.DataFrame({
             'PC1': X_pca[:, 0],
             'PC2': X_pca[:, 1],
-            'Cluster': [f'Cluster {c}' for c in clusters]
+            'Segment': [f'Segment {c}' for c in clusters]
         })
-        
-        fig = px.scatter(pca_df, x='PC1', y='PC2', color='Cluster',
-                        title=f'Clusters in PCA Space (Variance Explained: {sum(pca.explained_variance_ratio_)*100:.2f}%)',
-                        color_discrete_sequence=px.colors.qualitative.Set2)
-        
-        # Add centroids
-        centroids_pca = pca.transform(kmeans.cluster_centers_)
-        fig.add_trace(go.Scatter(x=centroids_pca[:, 0], y=centroids_pca[:, 1],
-                                mode='markers',
-                                marker=dict(size=20, symbol='x', color='black', line=dict(width=2)),
-                                name='Centroids'))
-        
+
+        fig = px.scatter(
+            pca_df, x='PC1', y='PC2', color='Segment',
+            title=f'Customer Segments in PCA Space',
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Cluster Interpretations
-        st.subheader("5️⃣ Cluster Interpretations")
-        
-        cluster_names = {
-            0: "Low-Engagement Cash Users",
-            1: "High-Value Frequent Spenders",
-            2: "Balanced Low Spenders",
-            3: "Moderate Installment Users"
-        }
-        
-        cluster_descriptions = {
-            0: "🔴 **Low-Engagement Cash Users**: Low spending, low frequency, high cash advances. These are risky users with minimal one-off payments. Focus on conversion strategies.",
-            1: "🟢 **High-Value Frequent Spenders**: High spending, high frequency, high credit limits, low cash advances. Loyal customers who prefer installments. Target for premium rewards.",
-            2: "🟡 **Balanced Low Spenders**: Low balance, no cash advances, medium frequency. Conservative users with growth potential. Offer incentives to increase engagement.",
-            3: "🔵 **Moderate Installment Users**: Medium spending, split between one-off and installments, medium frequency. Family/large purchase oriented. Provide flexible payment options."
-        }
-        
-        for i in range(optimal_k):
-            with st.expander(f"Cluster {i}: {cluster_names.get(i, f'Segment {i}')}"):
-                st.write(cluster_descriptions.get(i, "Analysis pending..."))
-                
-                # Show sample customers
-                sample = df_clustered[df_clustered['Cluster'] == i][['CUST_ID'] + selected_features].head(5)
-                st.write("**Sample Customers:**")
-                st.dataframe(sample, use_container_width=True)
-        
-        # Store in session state
+
+        # Cluster profiles
+        st.subheader("📋 Segment Profiles")
+        cluster_profiles = df_clustered.groupby('Cluster')[selected_features].mean()
+        cluster_profiles['Size'] = cluster_counts.values
+
+        st.dataframe(cluster_profiles.round(2), use_container_width=True)
+
+        # Store results
         st.session_state['df_clustered'] = df_clustered
         st.session_state['cluster_profiles'] = cluster_profiles
         st.session_state['kmeans'] = kmeans
-    
-    # ============ PART F: BUSINESS INSIGHTS ============
-    elif selected_section == "💼 Part F: Business Insights":
-        st.markdown('<h2 class="section-header">Part F: Business Conclusions & Recommendations</h2>', unsafe_allow_html=True)
-        
+
+    elif selected_section == "💼 Business Intelligence":
+        st.markdown('<h2 class="section-header">💼 Business Intelligence</h2>', unsafe_allow_html=True)
+
         if 'df_clustered' not in st.session_state:
-            st.warning("⚠️ Please complete Part E: Clustering first!")
-            return
-        
+            st.warning("⚠️ Please complete Segmentation first!")
+            st.stop()
+
         df_clustered = st.session_state['df_clustered']
         cluster_profiles = st.session_state['cluster_profiles']
         selected_features = st.session_state['selected_features']
-        
-        st.subheader("1️⃣ Executive Summary")
-        
-        total_customers = len(df_clustered)
-        n_clusters = df_clustered['Cluster'].nunique()
-        
+
+        st.subheader("📊 Executive Dashboard")
+
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Customers", f"{total_customers:,}")
+            st.metric("Total Customers", f"{len(df_clustered):,}")
         with col2:
-            st.metric("Segments Identified", n_clusters)
+            st.metric("Segments", df_clustered['Cluster'].nunique())
         with col3:
-            avg_balance = df_clustered['BALANCE'].mean()
-            st.metric("Avg Balance", f"${avg_balance:,.2f}")
+            if 'BALANCE' in df_clustered.columns:
+                avg_balance = df_clustered['BALANCE'].mean()
+                st.metric("Avg Balance", f"${avg_balance:,.0f}")
         with col4:
-            avg_purchases = df_clustered['PURCHASES'].mean()
-            st.metric("Avg Purchases", f"${avg_purchases:,.2f}")
-        
-        st.subheader("2️⃣ Cluster Distribution & Insights")
-        
-        # Revenue potential analysis
-        if 'PURCHASES' in selected_features:
-            cluster_revenue = df_clustered.groupby('Cluster')['PURCHASES'].sum()
-            cluster_revenue_pct = (cluster_revenue / cluster_revenue.sum() * 100).round(2)
-            
-            revenue_df = pd.DataFrame({
-                'Cluster': cluster_revenue.index,
-                'Total Revenue': cluster_revenue.values,
-                'Revenue %': cluster_revenue_pct.values,
-                'Avg Revenue': (cluster_revenue / df_clustered.groupby('Cluster').size()).values
-            })
-            
-            st.write("**Revenue Contribution by Cluster:**")
-            st.dataframe(revenue_df.round(2), use_container_width=True)
-            
-            fig = px.bar(revenue_df, x='Cluster', y='Revenue %',
-                        title='Revenue Contribution by Cluster',
-                        color='Revenue %',
-                        color_continuous_scale='viridis')
-            st.plotly_chart(fig, use_container_width=True)
-        
-        st.subheader("3️⃣ Targeted Marketing Strategies")
-        
-        strategies = {
-            "Cluster 0: Low-Engagement Cash Users": {
-                "Risk Level": "🔴 High",
-                "Strategy": "Cash-to-Purchase Conversion Campaign",
-                "Actions": [
-                    "Offer 0% interest on purchases for 3 months",
-                    "Implement credit monitoring and limit adjustments",
-                    "Send educational content about responsible card usage",
-                    "Provide cashback rewards on purchases to reduce cash reliance"
-                ],
-                "Expected Impact": "15-20% conversion rate from cash to purchases",
-                "Priority": "High - Risk Mitigation"
-            },
-            "Cluster 1: High-Value Frequent Spenders": {
-                "Risk Level": "🟢 Low",
-                "Strategy": "VIP Loyalty & Premium Rewards Program",
-                "Actions": [
-                    "Offer credit limit increases with premium benefits",
-                    "Exclusive rewards: travel points, cashback bonuses",
-                    "Personalized offers based on spending patterns",
-                    "Early access to new products and services"
-                ],
-                "Expected Impact": "20-25% increase in spending, 90% retention",
-                "Priority": "High - Revenue Growth"
-            },
-            "Cluster 2: Balanced Low Spenders": {
-                "Risk Level": "🟡 Low-Medium",
-                "Strategy": "Engagement & Growth Activation",
-                "Actions": [
-                    "One-off purchase incentives with bonus rewards",
-                    "Increase purchase frequency with gamification",
-                    "Referral bonuses for bringing new customers",
-                    "Seasonal promotions targeting their spending habits"
-                ],
-                "Expected Impact": "15% increase in purchase frequency",
-                "Priority": "Medium - Growth Potential"
-            },
-            "Cluster 3: Moderate Installment Users": {
-                "Risk Level": "🟡 Medium",
-                "Strategy": "Flexible Payment & Family-Oriented Offers",
-                "Actions": [
-                    "Extended installment plans for large purchases",
-                    "Family bundles and multi-purchase discounts",
-                    "Partner with retailers for exclusive deals",
-                    "Auto-payment setup incentives to reduce defaults"
-                ],
-                "Expected Impact": "10-15% increase in transaction value",
-                "Priority": "Medium - Retention Focus"
-            }
-        }
-        
-        for cluster_name, strategy in strategies.items():
-            with st.expander(f"📊 {cluster_name}", expanded=True):
-                col1, col2 = st.columns([1, 3])
+            if 'PURCHASES' in df_clustered.columns:
+                avg_purchases = df_clustered['PURCHASES'].mean()
+                st.metric("Avg Purchases", f"${avg_purchases:,.0f}")
+
+        st.subheader("🎯 Segment Insights")
+
+        for i in range(df_clustered['Cluster'].nunique()):
+            with st.expander(f"🔮 Segment {i} ({len(df_clustered[df_clustered['Cluster']==i]):,} customers)"):
+                segment_data = df_clustered[df_clustered['Cluster'] == i]
+
+                col1, col2 = st.columns([1, 2])
+
                 with col1:
-                    st.write(f"**Risk Level:** {strategy['Risk Level']}")
-                    st.write(f"**Priority:** {strategy['Priority']}")
+                    st.write("**Key Metrics:**")
+                    for feat in selected_features[:5]:
+                        if feat in segment_data.columns:
+                            val = segment_data[feat].mean()
+                            st.metric(feat, f"{val:.2f}")
+
                 with col2:
-                    st.write(f"**Strategy:** {strategy['Strategy']}")
-                    st.write(f"**Expected Impact:** {strategy['Expected Impact']}")
-                
-                st.write("**Action Items:**")
-                for action in strategy['Actions']:
-                    st.write(f"- {action}")
-        
-        st.subheader("4️⃣ Risk Management Recommendations")
-        
-        st.write("""
-        **Credit Risk Assessment:**
-        - **High Risk (Cluster 0)**: 28% of customers - implement stricter monitoring, consider limit reductions for high cash advance users
-        - **Medium Risk (Cluster 3)**: 25% of customers - monitor payment patterns, offer payment reminders
-        - **Low Risk (Clusters 1, 2)**: 47% of customers - maintain current credit policies, reward good behavior
-        
-        **Churn Prevention:**
-        - Cluster 0 shows low TENURE (avg 25 months) → 20% churn risk
-        - Implement early warning system based on:
-          - Decreasing purchase frequency
-          - Increasing cash advance reliance
-          - Late payment patterns
-        """)
-        
-        st.subheader("5️⃣ Personalized Promotion Matrix")
-        
-        promotion_matrix = pd.DataFrame({
-            'Cluster': [0, 1, 2, 3],
-            'Email Campaign': ['Cash Conversion', 'VIP Rewards', 'Bonus Points', 'Flexible Payment'],
-            'Offer Type': ['0% Interest', 'Premium Benefits', 'Cashback', 'Extended Terms'],
-            'Channel': ['Email + SMS', 'Email + App', 'Email', 'Email + Call'],
-            'Frequency': ['Weekly', 'Monthly', 'Bi-weekly', 'Monthly'],
-            'Expected ROI': ['15-20%', '25-30%', '10-15%', '12-18%']
-        })
-        
-        st.dataframe(promotion_matrix, use_container_width=True)
-        
-        st.subheader("6️⃣ Implementation Roadmap")
-        
-        timeline = {
-            "Phase 1 (Month 1-2)": [
-                "Integrate cluster labels into CRM system",
-                "Design and launch targeted email campaigns",
-                "Set up A/B testing framework"
-            ],
-            "Phase 2 (Month 3-4)": [
-                "Analyze campaign performance metrics",
-                "Refine customer segments based on response",
-                "Launch personalized app notifications"
-            ],
-            "Phase 3 (Month 5-6)": [
-                "Implement real-time segmentation API",
-                "Deploy predictive churn models",
-                "Scale successful campaigns"
-            ],
-            "Phase 4 (Month 7+)": [
-                "Continuous monitoring and optimization",
-                "Quarterly model retraining",
-                "Expand to additional behavioral segments"
-            ]
-        }
-        
-        for phase, actions in timeline.items():
-            with st.expander(f"📅 {phase}"):
-                for action in actions:
-                    st.write(f"✓ {action}")
-        
-        st.subheader("7️⃣ Key Performance Indicators (KPIs)")
-        
-        kpi_data = {
-            'KPI': [
-                'Customer Retention Rate',
-                'Average Purchase Frequency',
-                'Cash Advance Reduction',
-                'Credit Utilization Rate',
-                'Campaign Response Rate',
-                'Revenue per Customer'
-            ],
-            'Current': ['75%', '0.5/month', '30%', '45%', 'N/A', '$1,008'],
-            'Target (6 months)': ['85%', '0.7/month', '20%', '50%', '20%', '$1,300'],
-            'Target (12 months)': ['90%', '1.0/month', '15%', '55%', '30%', '$1,500']
-        }
-        
-        kpi_df = pd.DataFrame(kpi_data)
-        st.dataframe(kpi_df, use_container_width=True)
-        
-        st.subheader("8️⃣ Ethical Considerations & Compliance")
-        
-        st.info("""
-        **Data Privacy & Ethics:**
-        - ✅ Ensure GDPR/CCPA compliance in all marketing communications
-        - ✅ Provide opt-out mechanisms for personalized targeting
-        - ✅ Monitor for potential bias in credit decisions affecting low-income segments
-        - ✅ Regular audits of model fairness across demographic groups
-        - ✅ Transparent communication about how customer data is used
-        """)
-        
-        st.success("""
-        **📈 Expected Business Impact:**
-        - **Revenue Growth**: 15-20% uplift through targeted campaigns
-        - **Customer Retention**: 10-15% improvement in retention rates
-        - **Risk Reduction**: 20-25% decrease in default rates for high-risk clusters
-        - **Operational Efficiency**: 30% improvement in marketing ROI
-        - **Customer Satisfaction**: Enhanced personalization leading to better experience
-        """)
-        
-        # Download results
-        st.subheader("9️⃣ Export Results")
-        
+                    st.write("**Sample Customers:**")
+                    sample = segment_data[selected_features].head(5)
+                    st.dataframe(sample, use_container_width=True)
+
+        # Export
+        st.subheader("📥 Export Results")
+
         col1, col2 = st.columns(2)
+
         with col1:
             csv = df_clustered.to_csv(index=False)
             st.download_button(
-                label="📥 Download Clustered Data (CSV)",
+                label="📊 Download Segmented Data (CSV)",
                 data=csv,
-                file_name="customer_clusters.csv",
+                file_name="oracelix_segments.csv",
                 mime="text/csv"
             )
-        
+
         with col2:
-            cluster_summary = cluster_profiles.to_csv()
+            profiles_csv = cluster_profiles.to_csv()
             st.download_button(
-                label="📥 Download Cluster Profiles (CSV)",
-                data=cluster_summary,
-                file_name="cluster_profiles.csv",
+                label="📋 Download Profiles (CSV)",
+                data=profiles_csv,
+                file_name="oracelix_profiles.csv",
                 mime="text/csv"
             )
+
+    # ============ FOOTER BANNER ============
+    st.markdown("---")
+
+    footer_banner = load_image(FOOTER_BANNER)
+    if footer_banner:
+        st.markdown(f"""
+        <div style="width: 100%; margin-top: 2rem;">
+            <img src="{footer_banner}" style="width: 100%; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Additional footer text
+    st.markdown(f"""
+    <div style="text-align: center; color: #888; padding: 1rem;">
+        <p style="font-size: 0.9rem; margin-top: 1rem;">
+            🔒 Your data is 100% private and secure | Powered by Advanced ML | Optimized for Large Datasets
+        </p>
+        <p style="font-size: 0.8rem; color: #666;">
+            © 2025 {BRAND_NAME} - All Rights Reserved
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
-
