@@ -1,0 +1,20 @@
+# ORACELIX - Customer Segmentation Intelligence
+# Requirements File
+
+# Core Dependencies
+streamlit>=1.28.0
+pandas>=2.1.0
+numpy>=1.26.0
+scikit-learn>=1.3.0
+plotly>=5.17.0
+scipy>=1.11.0
+
+# Excel Support
+openpyxl>=3.1.0
+xlrd>=2.0.1
+
+# PDF Support (Optional - requires Java JRE)
+tabula-py>=2.8.0
+
+# Additional Utilities
+Pillow>=10.0.0
